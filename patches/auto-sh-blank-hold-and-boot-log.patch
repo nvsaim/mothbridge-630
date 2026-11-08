@@ -1,0 +1,24 @@
+diff --git a/tools/intelfb/auto.sh b/tools/intelfb/auto.sh
+index 3b0cd65..1c2f6c5 100644
+--- a/tools/intelfb/auto.sh
++++ b/tools/intelfb/auto.sh
+@@ -14,7 +14,8 @@ BIN=/usr/local/libexec/nmx-intelfb-auto.sh
+ EN=/usr/local/libexec/nmx-intelfb-enable.sh
+ PL=/Library/LaunchDaemons/$LABEL.plist
+ [ "$(id -u)" = 0 ] || { echo "rode com sudo"; exit 1; }
+-say() { logger -t nmx-intelfb-auto "$*"; echo "$*"; }
++# each line also goes to a file with seconds since boot, because the unified log is unreadable here after a clock jump
++say() { logger -t nmx-intelfb-auto "$*"; echo "$*"; echo "$(date +%T) boot+$(( $(date +%s) - $(sysctl -n kern.boottime | sed -E "s/^{ sec = ([0-9]+).*/\1/") ))s $*" >> /var/log/nmx-intelfb-auto.log; }
+ 
+ case "${1:-run}" in
+ install)
+@@ -74,6 +75,9 @@ run)
+         if sysctl -n debug.nmintelfb_ram >/dev/null 2>&1 && [ "$RAM" != 0 ]; then
+             if sysctl -w debug.nmintelfb_ram=$RAM >/dev/null 2>&1; then
+                 sysctl -w debug.nvaccel_iop_direct=2 >/dev/null && say "ram scanout on (mode $RAM, direct 2)"
++                # 2.6.6 lets single black frames through with the default hold of 3; 30 stopped the flashes (nvram nullmoth-accel-hold overrides)
++                HOLD=$(nvram nullmoth-accel-hold 2>/dev/null | awk '{print $2}'); HOLD=${HOLD:-30}
++                sysctl -w debug.nvaccel_iop_blank_hold=$HOLD >/dev/null 2>&1 && say "blank hold $HOLD"
+             else say "ram scanout refused ($(sysctl -n debug.nmintelfb_ram)); staying on direct 1"; fi
+         fi
+     fi

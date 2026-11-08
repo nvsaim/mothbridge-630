@@ -1,0 +1,18 @@
+From: nvsaim
+Subject: [PATCH] intelfb 9024: allow RAM scanout and flip on display version 9
+
+The GGTT entry format (phys | present, i915 gen8_ggtt_pte_encode) and its place at BAR0 + 8 MiB are
+the same on Gen9, so ramSet() accepts display version 9 (Coffee Lake 3E9B, opt-in through
+nullmoth-intelfb-gen9). Off until debug.nmintelfb_ram is written.
+---
+--- a/intelfb.cpp
++++ b/intelfb.cpp
+@@ -1358,7 +1358,7 @@
+ int NMIntelFB::ramSet(int mode)
+ {
+     if (mode < 0 || mode > 2) return -1;
+-    if (mode && (!fRegs || !fSurfMap || fVer < 12)) return -1;
++    if (mode && (!fRegs || !fSurfMap || fVer < 9)) return -1;   // intelfb-9024: Gen9 (Coffee Lake) uses the same gen8 GGTT PTE encoding
+     const unsigned long long len = (unsigned long long)fRowBytes * fHeight;
+     if (mode && !fRamCount) {
+         fRamCount = (unsigned)((len + 4095) >> 12);

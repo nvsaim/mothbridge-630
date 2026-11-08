@@ -1,0 +1,40 @@
+diff -ruN a/intelfb.cpp b/intelfb.cpp
+--- a/intelfb.cpp
++++ b/intelfb.cpp
+@@ -79,13 +79,17 @@
+     return has;
+ }
+ static char gIfbTrail[900];   // intelfb-0004: room for the first-call tokens
++// intelfb-0023: every ifb_nv_set() ends in a synchronous NVRAM (flash) write, which on many firmwares runs in SMM and
++// stops every CPU while it lasts. The trail wrote ~70 times and the heartbeat once a second for three minutes. On display
++// versions below 12 they now go to the log only; nullmoth-intelfb-nvtrace=1 brings the NVRAM writes back.
++static bool gIfbNvTrace = true;
+ static void ifb_trail(const char *step)
+ {
+     if (strlen(gIfbTrail) + strlen(step) + 2 >= sizeof(gIfbTrail)) return;
+     if (gIfbTrail[0]) strlcat(gIfbTrail, " ", sizeof(gIfbTrail));
+     strlcat(gIfbTrail, step, sizeof(gIfbTrail));
+     IFBLOG("trail: %s", step);
+-    ifb_nv_set("nullmoth-intelfb-trail", gIfbTrail);
++    if (gIfbNvTrace) ifb_nv_set("nullmoth-intelfb-trail", gIfbTrail);
+ }
+ // intelfb-0021: true when nullmoth's boot guard has NVRM off this boot (same test as nvrm_driver_off, minus -nvoff,
+ // which ifb_pci_ok checks first) and no NVRM instance is attached anywhere
+@@ -156,7 +160,8 @@
+         uint64_t ns; absolutetime_to_nanoseconds(mach_absolute_time() - gIfbT0, &ns);
+         char b[96];
+         snprintf(b, sizeof b, "ms=%llu vbl=%d calls=%d last=%s", ns / 1000000ull, (int)gIfbVbl, (int)gIfbCalls, (const char *)gIfbLast);
+-        ifb_nv_set("nullmoth-intelfb-beat", b);
++        if (gIfbNvTrace) ifb_nv_set("nullmoth-intelfb-beat", b);
++        else if ((ns / 1000000000ull) % 30 == 0) IFBLOG("beat: %s", b);
+         static bool alive;
+         if (!alive && ns >= 120ull * 1000000000ull) {
+             alive = true;
+@@ -651,6 +656,7 @@
+     // display versions below 12 (Coffee Lake = 9) have Apple's own framebuffer, which this driver displaces when it takes
+     // the panel (no brightness keys, no Intel HDMI, no sleep): only on request. sudo nvram nullmoth-intelfb-gen9=1 turns it
+     // on, sudo nvram -d nullmoth-intelfb-gen9 off
++    gIfbNvTrace = ifb_knob("nullmoth-intelfb-nvtrace", fVer < 12 ? 0 : 1) != 0;
+     if (fVer < 12 && ifb_knob("nullmoth-intelfb-gen9", 0) != 1) { IFBLOG("8086:%04x display version %u: left to Apple's driver (nullmoth-intelfb-gen9 is not 1)", dev, fVer); return false; }
+     if (ifb_nv_has("nullmoth-intelfb-attaching")) {
+         IFBLOG("the last start never returned (boot guard) - leaving the firmware screen; sudo nvram -d nullmoth-intelfb-attaching");

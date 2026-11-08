@@ -1,0 +1,112 @@
+diff -ruN a/Info.plist b/Info.plist
+--- a/Info.plist
++++ b/Info.plist
+@@ -18,6 +18,16 @@
+       <key>IOProbeScore</key><integer>61000</integer>
+       <key>IOMatchCategory</key><string>IOFramebuffer</string>
+     </dict>
++    <!-- Coffee Lake UHD 630 only: above Apple's AppleIntelFramebufferController (80005). probe() still needs nullmoth-intelfb-gen9=1 -->
++    <key>NMIntelFBClaimGen9</key><dict>
++      <key>CFBundleIdentifier</key><string>com.nullmoth.NMIntelFB</string>
++      <key>IOClass</key><string>NMIntelFBClaim</string>
++      <key>IOProviderClass</key><string>IOPCIDevice</string>
++      <key>IOPCIMatch</key><string>0x3E9B8086</string>
++      <key>IOPCIClassMatch</key><string>0x03000000&amp;0xff000000</string>
++      <key>IOProbeScore</key><integer>90000</integer>
++      <key>IOMatchCategory</key><string>IOFramebuffer</string>
++    </dict>
+     <key>NMIntelFBPanel</key><dict>
+       <key>CFBundleIdentifier</key><string>com.nullmoth.NMIntelFB</string>
+       <key>IOClass</key><string>NMIntelFB</string>
+diff -ruN a/display_ids.inc b/display_ids.inc
+--- a/display_ids.inc
++++ b/display_ids.inc
+@@ -1,4 +1,5 @@
+ // generated from tools/igfx/display_versions.json (Linux include/drm/intel/pciids.h, MIT)
++{0x3e9b, 9},
+ {0x4626, 13},
+ {0x4628, 13},
+ {0x462a, 13},
+diff -ruN a/intelfb.cpp b/intelfb.cpp
+--- a/intelfb.cpp
++++ b/intelfb.cpp
+@@ -219,6 +219,11 @@
+     { kIOPMPowerStateVersion1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+     { kIOPMPowerStateVersion1, kIOPMDeviceUsable, kIOPMPowerOn, kIOPMPowerOn, 0, 0, 0, 0, 0, 0, 0, 0 },
+ };
++// display versions below 12 (Haswell..Ice Lake, so Coffee Lake = 9) drive an eDP panel from TRANSCODER_EDP rather than
++// transcoder A (Linux TRANSCODER_EDP_OFFSET): its timings are at 0x6f000, its pipe config (enable bit 31) at 0x7f008, and
++// TRANS_DDI_FUNC_CTL_EDP (0x6f400: enable bit 31, input-pipe select bits 14:12, 0 = pipe A, 4/5/6 = A/B/C) says which pipe
++// feeds it. Measured on a UHD 630 (8086:3e9b): PIPECONF A 0, 0x7f008 0xc0000000, 0x6f400 0x82000002, timings at 0x6f000
++constexpr uint32_t kTransEdp = 0x6F000u, kEdpConf = 0x7F008u, kEdpDdiCtl = 0x6F400u;
+ constexpr uint32_t fmtOf(uint32_t ctl)  { return (ctl >> 23) & 0x1F; }
+ constexpr uint32_t tileOf(uint32_t ctl) { return (ctl >> 10) & 0x7; }
+ }
+@@ -360,6 +365,16 @@
+     uint8_t fVer = 0;
+ 
+     uint32_t rd(uint32_t off) const { return *(volatile uint32_t *)(fRegs + off); }
++    // true when the eDP transcoder (display versions below 12) is enabled and fed by pipe p
++    bool edpFeedsPipe(int p) const {
++        if (fVer >= 12) return false;
++        uint32_t c = rd(kEdpDdiCtl);
++        if (!(c & (1u << 31))) return false;
++        uint32_t in = (c >> 12) & 7;
++        return in == 0 ? p == 0 : (in >= 4 && in <= 6 && (int)(in - 4) == p);
++    }
++    // XRGB8888: display 11+ format field is bits 27:23 (== 8); before that bits 27:24 (== 4), and bit 23 is PIPE_CSC_ENABLE
++    bool isXrgb8888(uint32_t ctl) const { return fVer >= 11 ? fmtOf(ctl) == 8 : ((ctl >> 24) & 0xF) == 4; }
+     bool adoptFirmwareMode();
+ 
+ public:
+@@ -559,7 +574,8 @@
+ // leaves brightness out)
+ void NMIntelFB::publishBacklight()
+ {
+-    if (!ifb_knob("nullmoth-intelfb-backlight", 1)) { ifb_trail("bl-off"); return; }
++    // the brightness registers written here are the Alder/Raptor Lake ones: off by default on display versions below 12
++    if (!ifb_knob("nullmoth-intelfb-backlight", fVer < 12 ? 0 : 1)) { ifb_trail("bl-off"); return; }
+     const int level = backlightPercent();
+     if (level < 0 || !(rd(kBlcCtl) & (1u << 31))) { IFBLOG("backlight: PWM 1 not running (ctl 0x%x) - no brightness control", rd(kBlcCtl)); return; }
+     fBacklight = NMIntelFBBacklight::withFB(this, level);
+@@ -632,6 +648,10 @@
+     uint16_t dev = pci->configRead16(kIOPCIConfigDeviceID);
+     fVer = displayVersion(dev);
+     if (!fVer) return false;   // an Intel GPU this driver does not know (older ones have Apple's own driver)
++    // display versions below 12 (Coffee Lake = 9) have Apple's own framebuffer, which this driver displaces when it takes
++    // the panel (no brightness keys, no Intel HDMI, no sleep): only on request. sudo nvram nullmoth-intelfb-gen9=1 turns it
++    // on, sudo nvram -d nullmoth-intelfb-gen9 off
++    if (fVer < 12 && ifb_knob("nullmoth-intelfb-gen9", 0) != 1) { IFBLOG("8086:%04x display version %u: left to Apple's driver (nullmoth-intelfb-gen9 is not 1)", dev, fVer); return false; }
+     if (ifb_nv_has("nullmoth-intelfb-attaching")) {
+         IFBLOG("the last start never returned (boot guard) - leaving the firmware screen; sudo nvram -d nullmoth-intelfb-attaching");
+         ifb_nv_set("nullmoth-intelfb-trail", "guard: the last start never returned");
+@@ -656,9 +676,10 @@
+ {
+     // the panel is on whichever pipe the firmware used; take the first pipe whose transcoder and plane 1 are both on
+     for (int p = 0; p < 4; p++) {
+-        uint32_t conf = rd(TRANSCONF(p)), ctl = rd(PLANE_CTL(p));
++        const bool edp = edpFeedsPipe(p);
++        uint32_t conf = rd(edp ? kEdpConf : TRANSCONF(p)), ctl = rd(PLANE_CTL(p));
+         if (!(conf & kEnable) || !(ctl & kEnable)) continue;
+-        if (fmtOf(ctl) != 8) { IFBLOG("pipe %c: plane format %u is not XRGB8888 - leaving the firmware screen", 'A' + p, fmtOf(ctl)); return false; }
++        if (!isXrgb8888(ctl)) { IFBLOG("pipe %c: plane format %u is not XRGB8888 - leaving the firmware screen", 'A' + p, fmtOf(ctl)); return false; }
+         if (tileOf(ctl) != 0) { IFBLOG("pipe %c: plane is tiled (%u) - leaving the firmware screen", 'A' + p, tileOf(ctl)); return false; }
+         uint32_t size = rd(PLANE_SIZE(p)), stride = rd(PLANE_STRIDE(p)) & 0x7FF;
+         fWidth = (size & 0xFFFF) + 1; fHeight = ((size >> 16) & 0xFFFF) + 1;
+@@ -670,10 +691,12 @@
+         if ((uint64_t)fSurf + (uint64_t)fRowBytes * fHeight > fApertureLen) {
+             IFBLOG("pipe %c: surface at 0x%x is past the %llu MiB aperture", 'A' + p, fSurf, (unsigned long long)(fApertureLen >> 20)); return false;
+         }
+-        // the transcoder that feeds pipe p is p on these display versions (eDP on transcoder A in every recording)
+-        fHT = (rd(HTOTAL(p)) >> 16) + 1; fVT = (rd(VTOTAL(p)) >> 16) + 1;
+-        fHSS = (rd(HSYNC(p)) & 0xFFFF) + 1; fHSE = (rd(HSYNC(p)) >> 16) + 1;
+-        fVSS = (rd(VSYNC(p)) & 0xFFFF) + 1; fVSE = (rd(VSYNC(p)) >> 16) + 1;
++        // the transcoder that feeds pipe p is p on display versions 12+ (eDP on transcoder A in every recording); below that
++        // an eDP panel is on TRANSCODER_EDP. Same register layout from either base: HTOTAL +0, HSYNC +8, VTOTAL +0xC, VSYNC +0x14
++        const uint32_t tb = edp ? kTransEdp : 0x60000u + (uint32_t)p * 0x1000u;
++        fHT = (rd(tb + 0x00) >> 16) + 1; fVT = (rd(tb + 0x0C) >> 16) + 1;
++        fHSS = (rd(tb + 0x08) & 0xFFFF) + 1; fHSE = (rd(tb + 0x08) >> 16) + 1;
++        fVSS = (rd(tb + 0x14) & 0xFFFF) + 1; fVSE = (rd(tb + 0x14) >> 16) + 1;
+         // refresh: count vblanks for 250 ms (a 30-240 Hz panel gives 7-60 counts); fall back to 60 Hz if it does not move
+         uint32_t f0 = rd(FRMCOUNT(p)); uint64_t t0 = mach_absolute_time();
+         IOSleep(250);
