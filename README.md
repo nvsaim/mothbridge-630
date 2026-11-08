@@ -179,8 +179,8 @@ It works when you see `headless 0`, a rising `frames on panel` count, `failed 0`
 
 ## Credits
 
-- **nvsaim**: idea, testing on the MSI GF63, every reboot.
-- **Claude** (Anthropic): source reading, root cause, patches 9024 and the boot-helper changes, scripts, this guide.
+- **nvsaim**: idea, testing on the MSI GF63, every reboot, and the first Coffee Lake patches (9022, 9023) made with Claude.
+- **Claude** (Anthropic): source reading, root cause, patches 9022, 9023 and 9024, the boot-helper changes, scripts, this guide.
 - **[NullMoth](https://github.com/nullmoth/nvidia-macos-driver)**: the NVIDIA driver for macOS, NVAccel and NMIntelFB.
 - **[kitsuneislife/nmx-intel](https://github.com/kitsuneislife/nmx-intel)**: NMIntelFB patches 0001–0021, the NVAccel fast-copy and RAM-flip patches, and the build and install scripts. MothBridge downloads them and does not copy them.
 - **NVIDIA [open-gpu-kernel-modules](https://github.com/NVIDIA/open-gpu-kernel-modules)**: kernel headers used to build.
