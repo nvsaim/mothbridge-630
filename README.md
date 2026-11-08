@@ -4,6 +4,8 @@
 
 By **nvsaim** and **Claude** (Anthropic). Tested on one laptop, November 2026. Experimental: read the cons before you install.
 
+![About This Mac showing the GTX 1650 Max-Q as the graphics card on the MSI GF63](docs/about-this-mac.png)
+
 ---
 
 ## Who this is for
