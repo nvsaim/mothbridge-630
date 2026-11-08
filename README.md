@@ -78,7 +78,7 @@ On such a laptop macOS normally cannot use the NVIDIA GPU at all. [NullMoth](htt
 ### 1. Get MothBridge 630
 
 ```bash
-git clone https://github.com/<your-account>/mothbridge-630 ~/mothbridge-630
+git clone https://github.com/nvsaim/mothbridge-630 ~/mothbridge-630
 ```
 
 ### 2. Install NullMoth 2.6.3
