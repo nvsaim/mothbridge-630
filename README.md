@@ -30,7 +30,7 @@ On such a laptop macOS normally cannot use the NVIDIA GPU at all. [NullMoth](htt
 | dGPU | NVIDIA GTX 1650 with Max-Q (`10DE:1F99`, TU117), 4 GB, no display outputs, 256 MB BAR1 |
 | Panel | 1920×1080, 59.73 Hz |
 | macOS | 15.7.8 Sequoia, OpenCore |
-| Base EFI | [rahulhingve/Hackintosh-Msi-GF63-Thin-9SCXR-Sonoma](https://github.com/rahulhingve/Hackintosh-Msi-GF63-Thin-9SCXR-Sonoma) |
+| EFI | own OpenCore EFI by nvsaim |
 | NullMoth | 2.6.3 (2.5.2 also tested) |
 
 ## What it does
